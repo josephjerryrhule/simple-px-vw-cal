@@ -46,7 +46,6 @@
     </div>
 
     <div class="controls">
-      <button id="genBtn">Generate calc()</button>
       <button id="copyBtn" class="copyBtn">Copy calc()</button>
       <button id="copyClampBtn">Copy clamp(calc())</button>
     </div>
@@ -92,7 +91,6 @@
     const minValEl = document.getElementById('minVal');
     const midVwEl = document.getElementById('midVw');
     const midValEl = document.getElementById('midVal');
-    const genBtn = document.getElementById('genBtn');
     const outputEl = document.getElementById('output');
     const box = document.getElementById('box');
     const meta = document.getElementById('meta');
@@ -156,16 +154,19 @@
       meta.textContent = `Viewport: ${vw}px → value: ${val.toFixed(2)}px`;
     }
 
-    // events
-    genBtn.addEventListener('click', generateFormula);
+    // Auto-generate when input values change
+    minVwEl.addEventListener('input', generateFormula);
+    minValEl.addEventListener('input', generateFormula);
+    midVwEl.addEventListener('input', generateFormula);
+    midValEl.addEventListener('input', generateFormula);
 
     // copy functions
     copyBtn.addEventListener('click', () => {
       const txt = outputEl.textContent.trim();
       if (!txt) return alert('Generate the formula first');
       navigator.clipboard.writeText(txt).then(() => {
-        genBtn.textContent = 'Copied!';
-        setTimeout(()=> genBtn.textContent = 'Generate calc()', 900);
+        copyBtn.textContent = 'Copied!';
+        setTimeout(()=> copyBtn.textContent = 'Copy calc()', 900);
       }).catch(()=> alert('Copy failed'));
     });
 
