@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Extrapolating VW Fluid Generator (375 → 1440 → ...)</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    :root{--accent:#0b74ff;--bg:#f7f8fb;--card:#ffffff;--mono:#1e1e1e}
+    body{font-family:Inter,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);margin:0;padding:28px; color:var(--mono)}
+    .wrap{max-width:920px;margin:0 auto}
+    h1{font-size:18px;margin:0 0 12px}
+    .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+    label{display:block;font-size:13px;color:#333;margin-bottom:6px}
+    input[type="number"]{width:100%;padding:8px;border-radius:8px;border:1px solid #e2e8f0;background:#fff;font-size:14px}
+    .controls{display:flex;gap:10px;margin-top:10px}
+    button{background:var(--accent);color:#fff;border:0;padding:10px 14px;border-radius:8px;cursor:pointer}
+    pre.output{background:#0f1724;color:#f8fafc;padding:12px;border-radius:8px;overflow:auto;white-space:pre-wrap}
+    .card{background:var(--card);padding:14px;border-radius:10px;box-shadow:0 6px 18px rgba(12,20,40,0.06)}
+    .preview{margin-top:16px;padding:16px;border-radius:10px;background:linear-gradient(180deg,#ffffff,#fbfdff);box-shadow:inset 0 1px 0 rgba(255,255,255,0.4)}
+    .preview-box{display:inline-flex;align-items:center;justify-content:center;border-radius:8px;padding:14px 18px;background:var(--accent);color:#fff;font-weight:600}
+    .meta{margin-top:8px;font-size:13px;color:#334155}
+    .row{display:flex;gap:10px;align-items:center}
+    .small{font-size:13px;color:#475569}
+    .copyBtn{background:#0ea5a4}
+    footer{margin-top:18px;color:#475569;font-size:13px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Fluid Extrapolate (enter 375 → 1440 only)</h1>
+
+    <div class="grid">
+      <div class="card">
+        <label>Min viewport (px)</label>
+        <input id="minVw" type="number" value="375" min="1" />
+        <label style="margin-top:10px">Min value (px) — value at min viewport</label>
+        <input id="minVal" type="number" value="16" step="0.1" />
+      </div>
+
+      <div class="card">
+        <label>Mid viewport (px) — the breakpoint you define (e.g. 1440)</label>
+        <input id="midVw" type="number" value="1440" min="1" />
+        <label style="margin-top:10px">Mid value (px) — value at mid viewport</label>
+        <input id="midVal" type="number" value="32" step="0.1" />
+      </div>
+    </div>
+
+    <div class="controls">
+      <button id="genBtn">Generate calc()</button>
+      <button id="copyBtn" class="copyBtn">Copy calc()</button>
+      <button id="copyClampBtn">Copy clamp(calc())</button>
+    </div>
+
+    <div style="margin-top:12px" class="card">
+      <div style="display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap">
+        <div style="flex:1;min-width:220px">
+          <label>Generated formula</label>
+          <pre id="output" class="output">click Generate → formula appears here</pre>
+        </div>
+
+        <div style="width:100%">
+          <label>Live preview (resize browser)</label>
+          <div class="preview">
+            <div style="text-align:center">
+              <div id="box" class="preview-box" style="font-size:16px">Aa • Preview</div>
+              <div class="meta" id="meta">Viewport: — px → value: — px</div>
+            </div>
+            <div style="margin-top:10px;font-size:13px;color:#475569">
+              Values (computed): <span id="atMin">at min</span> · <span id="atMid">at mid</span> · <span id="at1920">at 1920px</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div style="margin-top:12px" class="small">
+        Notes:
+        <ul style="margin:6px 0 0 18px">
+          <li>Only enter the two points: <strong>min (e.g. 375)</strong> and <strong>mid (e.g. 1440)</strong>.</li>
+          <li>Generated formula is linear between the two points and <strong>continues the same slope beyond mid</strong>.</li>
+          <li>Paste the generated <code>calc(...)</code> into Elementor's value field (e.g. font-size).</li>
+        </ul>
+      </div>
+    </div>
+
+    <footer>
+      Tip: If you want to cap the scaling later, wrap the generated calc in <code>clamp(minpx, calc(...), maxpx)</code>.
+    </footer>
+  </div>
+
+  <script>
+    // Elements
+    const minVwEl = document.getElementById('minVw');
+    const minValEl = document.getElementById('minVal');
+    const midVwEl = document.getElementById('midVw');
+    const midValEl = document.getElementById('midVal');
+    const genBtn = document.getElementById('genBtn');
+    const outputEl = document.getElementById('output');
+    const box = document.getElementById('box');
+    const meta = document.getElementById('meta');
+    const atMin = document.getElementById('atMin');
+    const atMid = document.getElementById('atMid');
+    const at1920 = document.getElementById('at1920');
+    const copyBtn = document.getElementById('copyBtn');
+    const copyClampBtn = document.getElementById('copyClampBtn');
+
+    let state = { intercept: 0, slopeVw: 0, minVw: 375, minVal: 16, midVw:1440, midVal:32 };
+
+    function generateFormula() {
+      const minVw = Number(minVwEl.value) || 375;
+      const minVal = Number(minValEl.value) || 16;
+      const midVw = Number(midVwEl.value) || 1440;
+      const midVal = Number(midValEl.value) || 32;
+
+      // slope in px per px
+      const S = (midVal - minVal) / (midVw - minVw);
+      // slope expressed in vw units (px per 1vw)
+      const slopeVw = S * 100;
+      // intercept in px (value when vw=0)
+      const intercept = minVal - S * minVw;
+
+      // formatting numbers nicely
+      const interceptStr = (Math.abs(intercept) < 0.00005 ? '0' : intercept.toFixed(4));
+      const slopeStr = slopeVw.toFixed(6);
+
+      const calcFormula = `calc(${interceptStr}px + ${slopeStr}vw)`;
+
+      // update state & UI
+      state = { intercept, slopeVw, minVw, minVal, midVw, midVal };
+      outputEl.textContent = calcFormula;
+
+      // Show computed values at typical widths
+      const valAtMin = computeValueAt(minVw);
+      const valAtMid = computeValueAt(midVw);
+      const valAt1920 = computeValueAt(1920);
+
+      atMin.textContent = `${minVw}px → ${valAtMin.toFixed(2)}px`;
+      atMid.textContent = `${midVw}px → ${valAtMid.toFixed(2)}px`;
+      at1920.textContent = `1920px → ${valAt1920.toFixed(2)}px`;
+
+      // apply preview immediately
+      updatePreview();
+    }
+
+    function computeValueAt(viewport) {
+      // using linear extrapolation (continues slope beyond mid)
+      const { minVw, minVal, midVw, midVal } = state;
+      const S = (midVal - minVal) / (midVw - minVw);
+      return minVal + S * (viewport - minVw);
+    }
+
+    function updatePreview() {
+      const vw = Math.max(1, window.innerWidth);
+      const val = computeValueAt(vw);
+      box.style.fontSize = Math.max(1, val) + 'px';
+      box.style.width = Math.max(60, val * 9) + 'px';
+      box.style.height = Math.max(30, val * 3.2) + 'px';
+      meta.textContent = `Viewport: ${vw}px → value: ${val.toFixed(2)}px`;
+    }
+
+    // events
+    genBtn.addEventListener('click', generateFormula);
+
+    // copy functions
+    copyBtn.addEventListener('click', () => {
+      const txt = outputEl.textContent.trim();
+      if (!txt) return alert('Generate the formula first');
+      navigator.clipboard.writeText(txt).then(() => {
+        genBtn.textContent = 'Copied!';
+        setTimeout(()=> genBtn.textContent = 'Generate calc()', 900);
+      }).catch(()=> alert('Copy failed'));
+    });
+
+    copyClampBtn.addEventListener('click', () => {
+      const txt = outputEl.textContent.trim();
+      if (!txt) return alert('Generate the formula first');
+      // default clamp will use min and mid values; user can change later in Elementor if needed
+      const clampTxt = `clamp(${state.minVal}px, ${txt}, ${state.midVal}px)`;
+      navigator.clipboard.writeText(clampTxt).then(() => {
+        copyClampBtn.textContent = 'Copied!';
+        setTimeout(()=> copyClampBtn.textContent = 'Copy clamp(calc())', 900);
+      }).catch(()=> alert('Copy failed'));
+    });
+
+    // update preview continuously
+    window.addEventListener('resize', updatePreview);
+
+    // initial generate
+    generateFormula();
+  </script>
+</body>
+</html>
