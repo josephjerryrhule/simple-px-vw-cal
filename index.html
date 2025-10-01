@@ -55,6 +55,9 @@
         <div style="flex:1;min-width:220px">
           <label>Generated formula</label>
           <pre id="output" class="output">click Generate → formula appears here</pre>
+          
+          <label style="margin-top:10px">Generated clamp formula</label>
+          <pre id="clampOutput" class="output">clamp formula appears here</pre>
         </div>
 
         <div style="width:100%">
@@ -92,6 +95,7 @@
     const midVwEl = document.getElementById('midVw');
     const midValEl = document.getElementById('midVal');
     const outputEl = document.getElementById('output');
+    const clampOutputEl = document.getElementById('clampOutput');
     const box = document.getElementById('box');
     const meta = document.getElementById('meta');
     const atMin = document.getElementById('atMin');
@@ -121,16 +125,25 @@
 
       const calcFormula = `calc(${interceptStr}px + ${slopeStr}vw)`;
 
+      // Generate clamp formula with rem units
+      const minValRem = (minVal / 16).toFixed(3);
+      const midValRem = (midVal / 16).toFixed(3);
+      const clampFormula = `clamp(${minValRem}rem, ${calcFormula}, ${midValRem}rem)`;
+
       // update state & UI
       state = { intercept, slopeVw, minVw, minVal, midVw, midVal };
       outputEl.textContent = calcFormula;
+      clampOutputEl.textContent = clampFormula;
 
       // Show computed values at typical widths
       const valAtMin = computeValueAt(minVw);
       const valAtMid = computeValueAt(midVw);
       const valAt1920 = computeValueAt(1920);
 
-      atMin.textContent = `${minVw}px → ${valAtMin.toFixed(2)}px`;
+      // Convert min value to rem (using 16px base)
+      const valAtMinRem = (valAtMin / 16);
+
+      atMin.textContent = `${minVw}px → ${valAtMin.toFixed(2)}px (${valAtMinRem.toFixed(3)}rem)`;
       atMid.textContent = `${midVw}px → ${valAtMid.toFixed(2)}px`;
       at1920.textContent = `1920px → ${valAt1920.toFixed(2)}px`;
 
@@ -171,10 +184,8 @@
     });
 
     copyClampBtn.addEventListener('click', () => {
-      const txt = outputEl.textContent.trim();
-      if (!txt) return alert('Generate the formula first');
-      // default clamp will use min and mid values; user can change later in Elementor if needed
-      const clampTxt = `clamp(${state.minVal}px, ${txt}, ${state.midVal}px)`;
+      const clampTxt = clampOutputEl.textContent.trim();
+      if (!clampTxt) return alert('Generate the formula first');
       navigator.clipboard.writeText(clampTxt).then(() => {
         copyClampBtn.textContent = 'Copied!';
         setTimeout(()=> copyClampBtn.textContent = 'Copy clamp(calc())', 900);
